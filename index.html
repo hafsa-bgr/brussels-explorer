@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="nl" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BrusselsExplorer — Dynamic Web (Herexamen)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <style>
+    :root{ --bg:#0b0c10; --bg-soft:#111217; --text:#e8e8ea; --muted:#b2b2bb; --brand:#5cc8ff; --card:#12131a; --accent:#ffd76b; --danger:#ff6b6b; --shadow:0 8px 28px rgba(0,0,0,.25); }
+    html[data-theme="light"]{ --bg:#f9fafb; --bg-soft:#ffffff; --text:#0f172a; --muted:#475569; --brand:#2563eb; --card:#ffffff; --accent:#a16207; --danger:#b91c1c; }
+    *{ box-sizing:border-box; } body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial; color:var(--text); background:var(--bg); }
+    header{ position:sticky; top:0; z-index:5; backdrop-filter:saturate(1.2) blur(8px); background:color-mix(in oklab, var(--bg) 88%, transparent); border-bottom:1px solid color-mix(in oklab, var(--text) 12%, transparent); }
+    header .wrap{ max-width:1200px; margin:auto; padding:16px 20px; display:flex; gap:16px; align-items:center; }
+    h1{ font-size:20px; margin:0; }
+    .controls{ max-width:1200px; margin:16px auto; padding:0 20px; display:grid; gap:12px; }
+    .toolbar{ display:grid; grid-template-columns: 1fr 180px 130px auto auto auto; gap:10px; }
+    .toolbar > *{ background:var(--bg-soft); border:1px solid color-mix(in oklab, var(--text) 12%, transparent); border-radius:12px; padding:10px 12px; }
+    .toolbar input, .toolbar select{ width:100%; color:var(--text); background:transparent; border:0; outline:none; }
+    .pill{ padding:8px 12px; border-radius:999px; background:var(--bg-soft); border:1px solid color-mix(in oklab, var(--text) 12%, transparent); cursor:pointer; color:var(--text); }
+    .toggle{ display:flex; align-items:center; gap:8px; }
+    .layout{ max-width:1200px; margin:0 auto 24px; padding:0 20px; display:grid; grid-template-columns: 1.2fr .8fr; gap:16px; align-items:start; }
+    #map{ height:70vh; border-radius:16px; overflow:hidden; box-shadow:var(--shadow); border:1px solid color-mix(in oklab, var(--text) 12%, transparent); }
+    .panel{ background:var(--card); border:1px solid color-mix(in oklab, var(--text) 12%, transparent); border-radius:16px; overflow:hidden; box-shadow:var(--shadow); }
+    .panel header{ position:sticky; top:68px; background:var(--card); padding:12px 16px; border-bottom:1px solid color-mix(in oklab, var(--text) 10%, transparent); z-index:2; }
+    table{ width:100%; border-collapse:collapse; }
+    thead th{ position:sticky; top:112px; background:var(--card); z-index:1; text-align:left; font-weight:600; padding:10px 12px; border-bottom:1px solid color-mix(in oklab, var(--text) 12%, transparent); }
+    tbody td{ padding:10px 12px; border-bottom:1px dashed color-mix(in oklab, var(--text) 10%, transparent); font-size:14px; vertical-align:top; }
+    tbody tr:hover{ background:color-mix(in oklab, var(--brand) 8%, transparent); }
+    .star{ font-size:18px; line-height:1; cursor:pointer; background:transparent; border:0; }
+    .star[data-active="true"]{ color:var(--accent); filter:drop-shadow(0 2px 4px rgba(0,0,0,.15)); }
+    .muted{ color:var(--muted); }
+    details.filters{ background:var(--bg-soft); border:1px solid color-mix(in oklab, var(--text) 12%, transparent); border-radius:12px; padding:10px 12px; }
+    details.filters summary{ cursor:pointer; color:var(--muted); }
+    .facets{ display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:10px; margin-top:10px; }
+    .facet{ border:1px solid color-mix(in oklab, var(--text) 12%, transparent); border-radius:12px; padding:10px; }
+    .facet h4{ margin:0 0 8px; font-size:13px; color:var(--muted); }
+    .badge{ font-size:11px; background:color-mix(in oklab, var(--brand) 16%, transparent); color:var(--brand); padding:2px 8px; border-radius:999px; }
+    .footer{ max-width:1200px; margin:24px auto 80px; padding:0 20px; color:var(--muted); font-size:12px; }
+    @media(max-width:980px){ .layout{ grid-template-columns:1fr; } #map{ height:55vh; } .toolbar{ grid-template-columns:1fr 160px 120px auto auto auto; } }
+    @media(max-width:720px){ .toolbar{ grid-template-columns:1fr 1fr 1fr; grid-auto-rows:min-content; } #map{ height:45vh; } thead th{ top:156px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>🗺️ BrusselsExplorer</h1>
+      <div class="toggle" style="margin-left:auto">
+        <label class="pill" title="Thema wisselen"><input id="themeToggle" type="checkbox" /> donker thema</label>
+        <label class="pill"><input id="onlyFav" type="checkbox" /> enkel favorieten</label>
+        <button id="geolocate" class="pill" title="Sorteer op afstand">📍 Gebruik mijn locatie</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="controls">
+    <div class="toolbar">
+      <div><input id="q" type="search" placeholder="Zoek (naam, categorie, …)" aria-label="Zoek"/></div>
+      <div><select id="sortField" aria-label="Sorteerveld"><option value="">Sorteer op…</option></select></div>
+      <div>
+        <select id="sortDir" aria-label="Richting">
+          <option value="asc">⬆︎ oplopend</option>
+          <option value="desc">⬇︎ aflopend</option>
+        </select>
+      </div>
+      <button id="reset" class="pill" title="Filters wissen">Reset</button>
+      <a class="pill" href="https://opendata.brussels.be/api/explore/v2.1/console" target="_blank" rel="noreferrer">API Console ↗</a>
+      <details class="filters">
+        <summary>Filters (facetten)</summary>
+        <div id="facets" class="facets" aria-live="polite"></div>
+      </details>
+    </div>
+  </section>
+
+  <section class="layout">
+    <div class="panel" id="listPanel">
+      <header>
+        <strong id="count">0 resultaten</strong>
+        <span class="muted"> — dataset: <code id="datasetName">…</code></span>
+      </header>
+      <div style="overflow:auto">
+        <table id="table" role="table" aria-label="Resultaten">
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div id="sentinel" class="muted" style="padding:16px; text-align:center">Scroll om meer te laden…</div>
+      </div>
+    </div>
+    <div id="map" aria-label="Kaart"></div>
+  </section>
+
+  <section class="footer">
+    <p>Tip: klik ⭐ om toe te voegen aan favorieten. Notities worden lokaal opgeslagen.</p>
+    <p class="muted">Gebouwd met <code>fetch</code>, <code>async/await</code>, <code>IntersectionObserver</code>, <code>LocalStorage</code> en <code>Leaflet</code>.</p>
+  </section>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+ 
+  // SOCIAL dataset
+  const DATASET_ID = 'recycleries-ressourceries-repaircafes-vbx';
+  const API_BASE = 'https://opendata.brussels.be/api/explore/v2.1/catalog/datasets';
+
+  // Brede aliaslijsten + fuzzy zoeken
+  const ALIAS = {
+    title:   ['title','titre','titel','name','nom','denomination','raison_sociale','enseigne'],
+    name:    ['name','nom','naam','denomination','raison_sociale','enseigne'],
+    date:    ['date','start_date','date_debut','date_begin','opening_date','horaire','opening_hours','heures','uurrooster'],
+    address: ['adresse_complete','adresse_postale','address','adresse','adres','street','rue','straat','voie','adresse_rue'],
+    number:  ['number','numero','num','nr'],
+    postcode:['postcode','postal_code','code_postal','cp'],
+    city:    ['city','commune','municipality','ville','stad','gemeente','localite','localité'],
+    type:    ['type','typologie','category','categorie','categorie_fr','categorie_nl','secteur','thema']
+  };
+  const LABEL = { title:'titel', name:'naam', date:'datum', address:'adres', city:'gemeente', type:'type', distance:'afstand_km' };
+  const LOGICAL_ORDER = ['title','name','date','address','city','type'];
+
+  // App state
+  const state = {
+    limit:50, offset:0, total:0,
+    results: [],
+    // sorteren server-side waar mogelijk (na eerste record vullen we mappen)
+    mapSortKeys: { title:null, name:null, date:null, address:null, city:null, type:null },
+    searchTerm:'', sortField:'', sortDir:'asc',
+    onlyFav:false,
+    favorites: loadJSON('be:favorites',{}),
+    notes: loadJSON('be:notes',{}),
+    theme: localStorage.getItem('be:theme') || 'light',
+    userPos:null, map:null, markers:new Map(), io:null, loading:false,
+  };
+
+  const els = {
+    datasetName: document.getElementById('datasetName'),
+    q: document.getElementById('q'),
+    sortField: document.getElementById('sortField'),
+    sortDir: document.getElementById('sortDir'),
+    onlyFav: document.getElementById('onlyFav'),
+    themeToggle: document.getElementById('themeToggle'),
+    facets: document.getElementById('facets'),
+    thead: document.getElementById('thead'),
+    tbody: document.getElementById('tbody'),
+    count: document.getElementById('count'),
+    sentinel: document.getElementById('sentinel'),
+    reset: document.getElementById('reset'),
+  };
+
+  init();
+
+  async function init(){
+    document.documentElement.setAttribute('data-theme', state.theme);
+    els.themeToggle.checked = state.theme === 'dark';
+    els.datasetName.textContent = DATASET_ID;
+    bindEvents();
+    initMap();
+    await loadFacets();
+    await refresh(true);
+    setupInfiniteScroll();
+  }
+
+  function bindEvents(){
+    els.q.addEventListener('input', debounce((e)=>{ state.searchTerm = e.target.value.trim(); refresh(true); }, 300));
+    els.sortField.addEventListener('change', ()=>{ state.sortField = els.sortField.value; refresh(true); });
+    els.sortDir.addEventListener('change', ()=>{ state.sortDir = els.sortDir.value; refresh(true); });
+    els.onlyFav.addEventListener('change', ()=>{ state.onlyFav = els.onlyFav.checked; rerenderAll(); });
+    document.getElementById('geolocate').addEventListener('click', getUserLocation);
+    els.themeToggle.addEventListener('change', ()=>{
+      state.theme = els.themeToggle.checked ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', state.theme);
+      localStorage.setItem('be:theme', state.theme);
+    });
+    els.reset.addEventListener('click', ()=>{
+      state.searchTerm=''; els.q.value='';
+      state.onlyFav=false; els.onlyFav.checked=false;
+      state.sortField=''; state.sortDir='asc';
+      els.sortField.innerHTML='<option value="">Sorteer op…</option>';
+      state.mapSortKeys = { title:null, name:null, date:null, address:null, city:null, type:null };
+      refresh(true);
+    });
+  }
+
+  // Data ophalen 
+  function buildWhere(){
+    const parts = [];
+    if(state.searchTerm){ parts.push(`search("${escapeODSQL(state.searchTerm)}")`); }
+    return parts.join(' AND ');
+  }
+  function buildUrl(){
+    const u = new URL(`${API_BASE}/${DATASET_ID}/records`);
+    u.searchParams.set('limit', state.limit);
+    u.searchParams.set('offset', state.offset);
+    const where = buildWhere(); if(where) u.searchParams.set('where', where);
+    if(state.sortField && state.sortField !== '__distance'){
+      const dir = state.sortDir === 'desc' ? ' desc' : '';
+      u.searchParams.set('order_by', `${state.sortField}${dir}`);
+    }
+    u.searchParams.set('lang','nl');
+    return u.toString();
+  }
+  async function fetchJSON(url){
+    const r = await fetch(url);
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  async function refresh(reset=false){
+    if(state.loading) return; state.loading = true;
+    if(reset){ state.offset = 0; state.results = []; clearTable(); clearMarkers(); }
+    try{
+      const data = await fetchJSON(buildUrl());
+      state.total = data.total_count || 0;
+      const chunk = (data.results || []).map(normalizeRecord);
+
+      // sorteer keys ontdekken op eerste record (handig voor server-side order_by)
+      if(!state.results.length && chunk[0]) fillSortKeyMap(chunk[0]);
+
+      state.results.push(...chunk);
+
+      if(state.userPos){
+        state.results = state.results.map(r=>{
+          if(r.fields.geopoint) r.distance_km = haversine(state.userPos, r.fields.geopoint);
+          return r;
+        });
+      }
+
+      if(els.thead.children.length===0){ buildHeader(); buildSortOptions(); }
+
+      if(state.sortField === '__distance'){
+        sortByDistance(); rerenderAll();
+      } else {
+        renderRows(chunk); addMarkers(chunk); updateCount();
+      }
+    }catch(err){ console.error(err); alert('Kon data niet laden. Zie console.'); }
+    finally{ state.loading = false; }
+  }
+
+  function fillSortKeyMap(rec){
+    const f = rec.fields || {};
+    state.mapSortKeys.title   = pickKey(f, ALIAS.title);
+    state.mapSortKeys.name    = pickKey(f, ALIAS.name);
+    state.mapSortKeys.date    = pickKey(f, ALIAS.date);
+    state.mapSortKeys.address = pickKey(f, ALIAS.address);
+    state.mapSortKeys.city    = pickKey(f, ALIAS.city);
+    state.mapSortKeys.type    = pickKey(f, ALIAS.type);
+  }
+
+  async function loadMore(){ if(state.results.length >= state.total) return; state.offset += state.limit; await refresh(false); }
+
+  function setupInfiniteScroll(){
+    state.io = new IntersectionObserver((entries)=>{ if(entries[0].isIntersecting){ loadMore(); } }, { root:null, threshold:0.25 });
+    state.io.observe(els.sentinel);
+  }
+
+  async function loadFacets(){
+    try{
+      const url = `${API_BASE}/${DATASET_ID}/facets?lang=nl`;
+      const data = await fetchJSON(url);
+      const facets = (data.facets||[]).slice(0,6);
+      els.facets.innerHTML = '';
+      for(const facet of facets){
+        const box = document.createElement('div'); box.className='facet';
+        const title = document.createElement('h4'); title.textContent = facet.name; box.appendChild(title);
+        const list = (facet.facets||[]).slice(0,10);
+        for(const item of list){
+          const label = document.createElement('label');
+          const cb = document.createElement('input'); cb.type='checkbox';
+          cb.addEventListener('change', ()=>{ refresh(true); });
+          const span = document.createElement('span'); span.textContent = item.name || item.value;
+          const badge = document.createElement('span'); badge.className='badge'; badge.textContent = item.count;
+          label.append(cb, span, badge); box.appendChild(label);
+        }
+        els.facets.appendChild(box);
+      }
+    }catch(e){ console.warn('Facets laden mislukt', e); }
+  }
+
+  // ---------- Rendering ----------
+  function buildHeader(){
+    els.thead.innerHTML = '';
+    const thFav = document.createElement('th'); thFav.textContent = '⭐'; els.thead.appendChild(thFav);
+    for(const logical of LOGICAL_ORDER){
+      const th = document.createElement('th'); th.textContent = LABEL[logical]; els.thead.appendChild(th);
+    }
+    if(state.userPos){ const th = document.createElement('th'); th.textContent = LABEL.distance; els.thead.appendChild(th); }
+    const thNote = document.createElement('th'); thNote.textContent='notitie'; els.thead.appendChild(thNote);
+  }
+
+  function buildSortOptions(){
+    let html = '<option value="">Sorteer op…</option>';
+    for(const logical of LOGICAL_ORDER){
+      const realKey = state.mapSortKeys[logical];
+      if(realKey) html += `<option value="${realKey}">${LABEL[logical]}</option>`;
+    }
+    if(state.userPos) html += `<option value="__distance">${LABEL.distance}</option>`;
+    els.sortField.innerHTML = html;
+  }
+
+  function clearTable(){ els.tbody.innerHTML=''; }
+  function rerenderAll(){ clearTable(); clearMarkers(); renderRows(state.results); addMarkers(state.results); updateCount(); }
+
+  function renderRows(items){
+    const frag = document.createDocumentFragment();
+    for(const rec of items){
+      if(state.onlyFav && !state.favorites[rec.recordid]) continue;
+
+      const tr = document.createElement('tr');
+
+      // ⭐
+      const tdStar = document.createElement('td');
+      const star = document.createElement('button'); star.className='star'; star.innerHTML = '★';
+      star.setAttribute('aria-label','Voeg toe aan favorieten');
+      star.dataset.active = !!state.favorites[rec.recordid];
+      star.addEventListener('click', ()=>{
+        const on = !state.favorites[rec.recordid];
+        if(on){ state.favorites[rec.recordid] = rec; } else { delete state.favorites[rec.recordid]; delete state.notes[rec.recordid]; }
+        star.dataset.active = on;
+        saveJSON('be:favorites', state.favorites);
+        saveJSON('be:notes', state.notes);
+      });
+      tdStar.appendChild(star); tr.appendChild(tdStar);
+
+      // vaste kolommen 
+      const vals = {
+        title:  valueFor(rec.fields, 'title'),
+        name:   valueFor(rec.fields, 'name'),
+        date:   valueFor(rec.fields, 'date'),
+        address:buildAddress(rec.fields) || valueFor(rec.fields, 'address'),
+        city:   valueFor(rec.fields, 'city'),
+        type:   valueFor(rec.fields, 'type')
+      };
+      for(const logical of LOGICAL_ORDER){
+        const td = document.createElement('td');
+        td.textContent = formatField(vals[logical]);
+        tr.appendChild(td);
+      }
+
+      if(state.userPos){
+        const tdD = document.createElement('td'); tdD.textContent = rec.distance_km ?? '—'; tr.appendChild(tdD);
+      }
+
+      // notitie
+      const tdNote = document.createElement('td');
+      tdNote.innerHTML = `<form class="noteForm">
+        <input name="note" type="text" placeholder="persoonlijke notitie" minlength="5" value="${escapeHtml(state.notes[rec.recordid]||'')}" />
+        <button class="pill" type="submit">💾</button>
+      </form>`;
+      tdNote.querySelector('form').addEventListener('submit', (ev)=>{
+        ev.preventDefault();
+        const input = ev.currentTarget.note;
+        if(!input.checkValidity()){ input.reportValidity(); return; }
+        if(!state.favorites[rec.recordid]){ alert('Eerst ⭐ toevoegen aan favorieten.'); return; }
+        state.notes[rec.recordid] = input.value.trim();
+        saveJSON('be:notes', state.notes);
+        input.blur();
+      });
+      tr.appendChild(tdNote);
+
+      // hover/focus 
+      tr.addEventListener('mouseenter', ()=> highlightMarker(rec.recordid, true));
+      tr.addEventListener('mouseleave', ()=> highlightMarker(rec.recordid, false));
+      tr.addEventListener('click', ()=> focusMarker(rec.recordid));
+
+      frag.appendChild(tr);
+    }
+    els.tbody.appendChild(frag);
+  }
+
+  function updateCount(){
+    const shown = els.tbody.querySelectorAll('tr').length;
+    els.count.textContent = `${shown} van ${state.total} resultaten`;
+  }
+
+  // Smart field helpers 
+  function valid(v){ return v!=null && v!=='' && v!=='?'; }
+
+  function pickKey(obj, aliases){
+    // exact
+    for(const a of aliases){ if(a in obj && valid(obj[a])) return a; }
+    const keys = Object.keys(obj);
+    for(const k of keys){
+      for(const a of aliases){
+        if(k.toLowerCase().includes(a.toLowerCase()) && valid(obj[k])) return k;
+      }
+    }
+    return null;
+  }
+
+  function pickValue(obj, aliases){
+    const k = pickKey(obj, aliases);
+    return k ? obj[k] : null;
+  }
+
+  function valueFor(obj, logical){
+    if(logical==='title'){
+      return pickValue(obj, ALIAS.title) || pickValue(obj, ALIAS.name) || '—';
+    }
+    return pickValue(obj, ALIAS[logical]) ?? '—';
+  }
+
+  function buildAddress(obj){
+    const full = pickValue(obj, ALIAS.address);
+    if(valid(full)) return full;
+    const street = pickValue(obj, ALIAS.address);
+    const num    = pickValue(obj, ALIAS.number);
+    const pc     = pickValue(obj, ALIAS.postcode);
+    const city   = pickValue(obj, ALIAS.city);
+    const parts = [street, num].filter(valid).join(' ');
+    const tail  = [pc, city].filter(valid).join(' ');
+    const out = [parts.trim(), tail.trim()].filter(valid).join(', ');
+    return out || null;
+  }
+
+  function formatField(v){
+    const dash = '—';
+    if(!valid(v)) return dash;
+    if(typeof v === 'string'){
+      // opening hours 
+      if(v.length > 120) return v.slice(0,117) + '…';
+      // datumvorm
+      const m = v.match(/(\d{4}-\d{2}-\d{2})/);
+      if(m) return m[1];
+      return v.trim();
+    }
+    if(typeof v === 'object'){
+      if('lat' in v && 'lon' in v) return `${v.lat.toFixed(5)}, ${v.lon.toFixed(5)}`;
+      return dash;
+    }
+    return String(v);
+  }
+
+  function normalizeRecord(r){
+    const out = { recordid: r.recordid, fields: r.fields ? {...r.fields} : {...r}, distance_km:null };
+    if(r.geometry && r.geometry.coordinates){
+      const [lon, lat] = r.geometry.coordinates; out.fields.geopoint = {lat, lon};
+    } else if(out.fields.geo_point_2d){
+      const {lat, lon} = out.fields.geo_point_2d; out.fields.geopoint = {lat, lon};
+    }
+    if(!out.fields.title && !out.fields.name){
+      for(const k of Object.keys(out.fields)){
+        if(typeof out.fields[k] === 'string' && valid(out.fields[k])){ out.fields.title = out.fields[k]; break; }
+      }
+    }
+    if(state.userPos && out.fields.geopoint){ out.distance_km = haversine(state.userPos, out.fields.geopoint); }
+    return out;
+  }
+
+  // Kaart 
+  function initMap(){
+    state.map = L.map('map', { zoomControl:true }).setView([50.8467, 4.3525], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20, attribution: '&copy; OpenStreetMap' }).addTo(state.map);
+  }
+  function clearMarkers(){ for(const m of state.markers.values()) m.remove(); state.markers.clear(); }
+  function addMarkers(items){
+    for(const rec of items){
+      const gp = rec.fields.geopoint; if(!gp) continue;
+      const title = formatField(valueFor(rec.fields,'title'));
+      const marker = L.marker([gp.lat, gp.lon]).addTo(state.map);
+      marker.bindPopup(`<strong>${escapeHtml(title)}</strong>`);
+      state.markers.set(rec.recordid, marker);
+    }
+  }
+  function highlightMarker(id, on){ const m = state.markers.get(id); if(!m) return; m.setOpacity(on?1.0:0.8); }
+  function focusMarker(id){ const m = state.markers.get(id); if(!m) return; m.openPopup(); state.map.panTo(m.getLatLng()); }
+
+  //  Geolocatie 
+  function sortByDistance(){
+    state.results.sort((a,b)=>{
+      const av = a.distance_km ?? Infinity;
+      const bv = b.distance_km ?? Infinity;
+      return state.sortDir === 'desc' ? (bv - av) : (av - bv);
+    });
+  }
+  function getUserLocation(){
+    if(!('geolocation' in navigator)){ alert('Geolocatie niet beschikbaar.'); return; }
+    navigator.geolocation.getCurrentPosition((pos)=>{
+      state.userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      state.results = state.results.map(r=>{ if(r.fields.geopoint) r.distance_km = haversine(state.userPos, r.fields.geopoint); return r; });
+      buildSortOptions(); buildHeader();
+      if(state.sortField === '__distance'){ sortByDistance(); rerenderAll(); } else { refresh(true); }
+    }, (err)=>{ alert('Geolocatie geweigerd.'); console.warn(err); }, { enableHighAccuracy:true, timeout:8000 });
+  }
+
+  function debounce(fn, ms=300){ let t; return (...args)=>{ clearTimeout(t); t = setTimeout(()=>fn(...args), ms); }; }
+  function haversine(a,b){
+    const R=6371, toRad=x=>x*Math.PI/180; const dLat=toRad(b.lat-a.lat), dLon=toRad(b.lon-a.lon);
+    const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;
+    return +(2*R*Math.asin(Math.sqrt(s))).toFixed(2);
+  }
+  function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+  function loadJSON(key, def){ try{ return JSON.parse(localStorage.getItem(key)) ?? def; }catch{ return def; } }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+  function escapeODSQL(s){ return String(s).replace(/\"/g,'\\\"'); }
+  </script>
+</body>
+</html>
